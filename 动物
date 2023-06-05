@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="en" class="index_html">
+<head>
+<link rel="shortcut icon" href="https://species.sciencereading.cn/images/favicon.ico" type="image/x-icon">
+<meta charset="utf-8" />
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<meta name="renderer" content="webkit" />
+<meta name="viewport" content="width=device-width,height=device-height,initial-scale=1.0,maximum-scale=1.0,user-scalable=no">
+<meta content="yes" name="apple-mobile-web-app-capable">
+<meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1"/>
+<link rel="stylesheet" href="https://species.sciencereading.cn/css/bootstrap.min.css" type="text/css" />//标题位置
+<!-- <link rel="stylesheet" href="https://species.sciencereading.cn/css/cui.css" type="text/css" /> -->
+<link rel="stylesheet" href="https://species.sciencereading.cn/css/slick.css" type="text/css"/>
+<!-- <link rel="stylesheet" href="https://species.sciencereading.cn/v3/css/font-awesome.min.css" type="text/css" /> -->
+<!-- <link rel="stylesheet" href="https://species.sciencereading.cn/v3/css/v3-framework.css" type="text/css" /> -->
+<link rel="stylesheet" href="https://species.sciencereading.cn/v3/css/v3-site.css" type="text/css" />//界面
+<script type="text/javascript" src="https://species.sciencereading.cn/js/jquery-1.10.2.js"></script>
+<!-- <script type="text/javascript" src="https://species.sciencereading.cn/v3/js/bootstrap.min.js"></script> -->
+<!-- <script type="text/javascript" src="https://species.sciencereading.cn/js/spin.js"></script> -->
+<!-- <script src="https://species.sciencereading.cn/biology/framework/zcms_require.js"></script> -->
+<script type="text/javascript" src="https://species.sciencereading.cn/js/slick.min.js"></script>
+<!-- <script type="text/javascript" src="https://species.sciencereading.cn/js/search.js"></script> -->
+<!-- <script type="text/javascript" src="https://species.sciencereading.cn/js/jquery.cookie.js"></script> -->
+<!-- <script type="text/javascript" src="https://species.sciencereading.cn/v3/js/v3_site.js"></script> -->
+<script type="text/javascript">
+	var frontAppContext = 'https://species.sciencereading.cn/biology/';
+	var siteID = "122";
+	var siteUrl = "https://species.sciencereading.cn/";
+	var curSub = '';	//当前子库
+	var wWidth = $(window).width();
+	var wHeight = $(window).height();
+	var ssoUrl ="https://sso.sciencereading.cn/sso/";
+	var hasPriv;//是否有权限
+	var inputType;
+	var realAuth = false;//是否实名认证
+	if(curSub == 'JSFFK' || curSub == 'SMKXZSK'){
+		inputType = "literature";
+	}else if(curSub == 'SYK'){
+		inputType = "entry";
+	}
+	 
+	function doLogin(){
+		var url=frontAppContext+"member/login?SiteID="+siteID+"&Referer="+encodeURIComponent(location.href);
+		if(Member&&Member.loginInfo&&(Member.loginInfo.BranchLogin||Member.loginInfo.Login)){
+			url += "&NeedNewLogin=true";
+		}
+		location.href=url;
+	}
+	function doLogout(){
+		var url=encodeURI(location.href);
+		url=frontAppContext+"member/login?Action=logout&SiteID="+siteID+"&Referer="+encodeURIComponent(url);
+		location.href=ssoUrl+"ssoLogout?Referer="+encodeURIComponent(url);
+	}
+	function regist(){
+		var redirectURL=frontAppContext+"member/login?SiteID="+siteID+"&Referer="+encodeURIComponent(location.href)
+		var url=ssoUrl+"regist?AppID=11&Referer="+encodeURIComponent(location.href)+"&redirectURL="+encodeURIComponent(redirectURL);
+		location.href=url;
+	}
+	function jsonp(url,func,callback){
+		callback=callback||"callback_"+Date.now();
+		var result={};
+		this[callback]=function(data){
+			result=data;
+			delete this[callback];
+		}
+		$.getScript(url,function(){
+			func(result);
+		})
+	}
+	function doIPlogin(){
+		var callback="callback_"+Date.now();
+		var url=frontAppContext+"member/login?callback="+callback+"&SiteID="+siteID+"&Referer="+encodeURIComponent("logined?callback="+callback);
+		url=ssoUrl+"doLogin?callback="+callback+"&NeedNewLogin=Y&plat=IP&Referer="+encodeURIComponent(url);
+		jsonp(url,function(result){
+			if(result.BranchLogin){
+				location.reload();
+			}else{
+				console.log(result);
+			}
+		},callback);
+	}
+	var memberLogin = false;
+	//检查是否登录
+	(function(){
+		
+		$.post(frontAppContext + 'Upgrade/getMemberAuth', null, function(data) {
+			window.realAuth = data.AuthStatus
+		});
+		
+		$.getJSON(ssoUrl+"online?callback=?",function(resp){
+			var ssoLogin=resp.Login;
+			$.getJSON(frontAppContext+"member/logined",function(data){
+				var login=false;
+				if(ssoLogin&&resp.AccessType==2&&data.BranchLogin&&!data.Login){//机构登录
+					login=true;
+				}else if(ssoLogin&&resp.AccessType==1&&data.Login){//个人用户登录
+					login=true;
+					memberLogin = true;
+				}
+				if(login){
+					Member.loginInfo=data;
+					Member.afterLogin();
+				}else if(ssoLogin){
+					var url=frontAppContext+"member/login?SiteID="+siteID+"&Referer="+encodeURIComponent(location.href)
+					location.href=url;
+				}else if(data.login||data.BranchLogin){
+					var url=frontAppContext+"member/login?Action=logout&SiteID="+siteID+"&Referer="+encodeURIComponent(location.href)
+					location.href=url;
+				}else{
+					doIPlogin();
+				}
+			})
+		});
+		//权限请求
+		var privParms = {
+			siteId: siteID,
+			alias: curSub	
+		};
+		// 将ajax设置为同步模式,确认当页面使用权限时, hasPriv不为undefined
+		$.ajaxSettings.async = false;
+		$.post(frontAppContext + 'UrlPriv/branchSublibraryPriv', privParms, function(data) {
+			window.hasPriv = data.hits[0].priv
+		});
+		$.ajaxSettings.async = true;
+		//添加子库权限
+		if(window.hasPriv==false){
+			var subdc = {
+				BusinessID: curSub,
+				ResourceType: 'SublibraryAlias'
+			};
+			$.post(frontAppContext + 'Authority/getAuthorityByBusinessID', subdc, function(data) {
+				window.hasPriv = data.flag
+			});
+		}
+	})();
+	var Member={
+			loginInfo:null,
+			afterLoginFunc:[],
+			afterLogin:function(func){
+				if(func && func instanceof Function){
+					this.afterLoginFunc.push(func);
+				}
+				if(this.loginInfo){
+					while((func=this.afterLoginFunc.shift())){
+						func();
+					}
+				}
+			}
+	};
+	function isMemberLogin() {
+		return memberLogin;
+	}
+	//function addHistory(type,resID,resTitle,bookid,sublibId){
+	function addHistory(type,resID,resTitle,bookid){
+		var dc = new DataCollection();
+		var siteID = '122';
+		var pagetitle = document.title;//页面标题
+		var url = window.location.href;//页面连接
+		dc.add("SiteID",siteID);
+		dc.add("BookID",bookid);
+		dc.add("Title",pagetitle);
+		dc.add("ResourceType",type);
+		dc.add("ResourceID",resID);
+		dc.add("Url",url);
+		dc.add("ResourceTitle",resTitle);
+		dc.add("SublibAlias","");
+		Server.sendRequest("BrowseHistory/add", dc, function(response) {});
+	}
+
+	function Trim(str)
+    { 
+        return str.replace(/(^\s*)|(\s*$)/g, ""); 
+    }
+</script>
+  	<link rel="stylesheet" href="https://thinktank.sciencereading.cn/v3/css/jquery.fullPage.css">
+  	<link rel="stylesheet" href="https://thinktank.sciencereading.cn/v3/css/v3-site.css" />
+  	<script src="https://thinktank.sciencereading.cn/v3/js/jquery.fullPage.js"></script>
+  	<style>
+        .fp-index .section .bg{background: url(https://species.sciencereading.cn/images/bg-back.png);}
+        .index_content .sublib-name{width: 900px;}
+        @media only screen and (max-width:767px){
+        	.index_content .sublib-name{width:100%;}
+        }
+    </style>
+</head>
+<body class="index_body" style="height: auto;">
+	
+<header class="index_header home-header">
+	<style>
+		.index_header .uncommon{padding-top: 0;}
+		.index_header .uncommon .words-section{width: 700px;}
+		.index_header .words-section .words-ul{
+			max-width: 100%;
+			max-height: 20px;
+			-webkit-transition: max-height .3s ;
+			-moz-transition: max-height .3s ;
+			-ms-transition: max-height .3s ;
+			-o-transition: max-height .3s ;
+			transition: max-height .3s ;
+		}
+		.index_header .words-section .words-ul.over{max-height: 10000px;}
+		.index_header .words-ul li:nth-child(n+20){display: block;}
+		@media (max-width: 1200px) {
+			.index_header .uncommon .words-section{width: 480px;}
+		}
+
+		@media (max-width: 768px) {
+			.index_header .uncommon .words-section{width: 100%;}
+		}
+
+	</style>
+	<nav class="container">
+		<div class="logo">
+			<a href="https://species.sciencereading.cn/">
+				<div class="logo_image"><img src="https://species.sciencereading.cn/images/logo1.png" alt="中国生物志库" /></div>
+			</a>
+		</div>
+		<div class="menu">
+			<button class="menutoggle" id="menutoggle">
+				<img src="https://species.sciencereading.cn/images/menu.svg" alt="">
+			</button>
+			<ul>
+				<li class="menu-item" id="nav1">
+					<a href="https://species.sciencereading.cn/biology/v/biologicalIndex/122.html">首页</a>
+				</li>
+				
+				<li class="menu-item" id="nav2">
+					<a href="javascript:void(0);">产品群</a>
+					<ul class="header_dropmenu">
+			     		<li><a href="https://species.sciencereading.cn/biology/v/botanyIndex/122/DW.html">动物</a></li>
+			     		<li><a href="https://species.sciencereading.cn/biology/v/botanyIndex/122/HYSW_1.html">海洋生物</a></li>
+					</ul>
+				</li>
+				<li class="menu-item" id="nav3">
+					<a href="javascript:void(0);">服务</a>
+					<ul class="header_dropmenu">
+								<li><a href="https://species.sciencereading.cn/c/2022-03-10/553583.shtml" target="_blank">产品介绍2022</a></li>
+						
+						<li><a href="javascript:void(0);" onclick="feedBack()">意见反馈</a></li>
+						<li><a href="https://species.sciencereading.cn/biology/v/memberMessage/122.html" target="_blank">用户留言</a></li>
+					</ul>
+				</li>
+				<li class="menu-item" id="nav4"><a href="https://species.sciencereading.cn/wzxx/zx" target="_blank">资讯</a></li>
+				<li class="menu-item" id="nav5">
+								
+				</li>
+			
+			</ul>
+		</div>
+		
+	<div class="user fr">
+		
+			<span class="noLogined">
+				<a class="login" href="javascript:void(0);" onclick="doLogin()">登录</a>
+				&nbsp;|&nbsp;
+				<a class="register" href="javascript:void(0);" onclick="regist()">注册</a>
+			</span>
+			<span class="Logined" style="display:none">
+				<a href="https://species.sciencereading.cn/biology/v/personBasic/122.html"><span id="UserName" class="row1"></span></a>
+				&nbsp;|&nbsp;
+				<a class="logout" href="javascript:void(0);" onclick="doLogout()">注销</a>
+			</span>
+			<span class="IPBranchLogined" style="display:none">
+				<a class="login-branchName"><span id="BranchName"></span></a>
+				&nbsp;|&nbsp;
+				<a href="javascript:void(0);" onclick="doLogin()" class="login">登录</a>
+			</span>
+		
+		<div class="language pull-right nav-item-hover">
+        	<a href="javascript:void(0);" class="switch-lang">中文</a>
+        	<ul class="switch-ul">
+        		<li class="on" lang="cn">中文</li>
+        		<li lang="en">English</li>
+        	</ul>
+        </div>
+	</div>
+	<div class="search_icon"><img src="https://species.sciencereading.cn/images/search.png" alt="搜索"></div>
+	
+	<script type="text/javascript">
+	//登录
+	Member.afterLogin(function () {
+		if (Member.loginInfo.Login) {
+			$(".user>span").hide();
+			$(".user>span.Logined").show();
+			$(".user>span.Logined #UserName").text(Member.loginInfo.NickName || Member.loginInfo.Name);
+		} else if (Member.loginInfo.BranchLogin) {
+			$(".user>span").hide();
+			$(".user>span.IPBranchLogined").show();
+			$(".user>span.IPBranchLogined #BranchName").text(Member.loginInfo.BranchName);
+		}
+	});
+	</script>
+	</nav>
+	<div class="search_mask">
+		<div class="container">
+			<div class="row">
+				<div class="search">
+					<div class="search_box search-box">
+						<input class="search_input" type="text" id="search" autocomplete="off">
+						<button class="search_commit" type="button" onclick="doSearch()"></button>
+						<ul class="reco-words"></ul>
+					</div>
+					<span class="search_close"></span>
+				</div>
+			</div>
+		</div>
+	</div>
+</header>
+<script>
+	$(function () {
+		//检索-enter生效
+		$(".search_box").keydown(function (event) {
+			var e = event || window.event || arguments.callee.caller.arguments[0];
+			if (e && e.keyCode == 13) { // enter 键
+				doSearch();
+			}
+		});
+		$('#search')
+			.focus(function() {
+				$('.search_box').addClass('focus')
+			})
+			.blur(function() {
+				$('.search_box').removeClass('focus')
+			})
+		// 生僻字
+		if ($('.words-ul').eq(0).find('.word').length > 20) {
+			$('.words-pull-down').on('click', function (event) {
+				// 2、点击‘展开’
+				$(this).prev('.words-ul_js').toggleClass('over');
+				$(this).toggleClass('pull-hover');
+				($(this).text() === '展开') ? $(this).text('收起') : $(this).text('展开');
+			});
+		} else {
+			$('.words-pull-down').hide()
+			$('.words-ul_js').show()
+		}
+		$('.words-ul').hide()
+		$('.search_close').click(function () {
+			$('.search_mask').removeClass('show')
+			$('.words-ul').hide()
+		})
+		$('.search_icon').click(function () {
+			$('.search_mask').addClass('show')
+			$('.words-ul').show()
+		})
+		$('.menutoggle').click(function (e) {
+			e.stopPropagation()
+			$('.menu>ul').stop().slideToggle('slow')
+		})
+		if ($(window).width() < 1024) {
+			$('.menu-item>a').click(function (e) {
+				e.stopPropagation()
+				$(this).siblings('ul').stop().slideToggle('slow')
+			})
+		}
+		$('.word').click(function () {
+			$('#search').val( $(this).html())
+			association($('#search'))
+		})
+		proMenuList();
+	})
+	//意见反馈权限控制
+	function feedBack(){
+		if(!isLogined()){
+			Dialog.warn('请先登录个人用户',function(){
+				doLogin();
+			});
+			return false
+		}else {
+			window.open(frontAppContext + 'v/feedback/' + siteID + '.html');
+		}
+	}
+	
+	function proMenuList() {
+		$.ajax({
+			type: 'get', 
+            url: frontAppContext + 'HomeModel.frontProductList',
+		    data: {
+		      	SiteID: "122",
+		      	siteUrl:"https://species.sciencereading.cn/"
+		    },
+		    success: function (data) {
+		    	console.log(data);
+		    }, 
+		    error: function(err) {
+		    	console.log(err)
+		    }
+		})
+	}
+</script>
+
+<div id="fullpage" class="fp-index">
+
+  	<div class="index_content section">
+    	<div class="slick banner" style="height: 100vh;">
+
+		   	<div>
+		        <img src="https://species.sciencereading.cn/upload/resources/image/2019/07/22/25870.png" alt="动物志库" title="动物志库">	
+		        <div class="banner_linkbox">
+		          	<div class="container">
+						
+							<a class="species-link" target="_blank" href="https://species.sciencereading.cn/biology/v/speciesDetails/122/DW/8716431.html">大熊猫 Ailuropoda&#32;melanoleucus</a>
+						
+		          	</div>
+		        </div>
+		    </div>
+		  
+		   	<div>
+		        <img src="https://species.sciencereading.cn/upload/resources/image/2021/12/21/29006.png" alt="海洋生物" title="海洋生物">	
+		        <div class="banner_linkbox">
+		          	<div class="container">
+						
+		          	</div>
+		        </div>
+		    </div>
+		
+    	</div>
+    	<div class="sublib-box" style="top: 66%;">
+    		<div class="container">
+    			<div class="sublib-name">
+		    		<div class="slick-nav">
+		    		
+			  			<div class="sl">
+			  				<a class="banner_link" target="_blank" href="https://species.sciencereading.cn/biology/v/botanyIndex/122/DW.html">
+                              
+                              
+                              <span>动物</span>
+                              
+			  				</a>
+			  			</div>
+			  			<div class="sl">
+			  				<a class="banner_link" target="_blank" href="https://species.sciencereading.cn/biology/v/botanyIndex/122/HYSW_1.html">
+                              
+			  				<span>海洋生物</span>
+                              
+                            </a>
+			  			</div>
+			  		
+		  			</div>
+	  			</div>
+  			</div>
+  		</div>
+	    <div class="introduction_box">
+	      	<div class="container">
+	        	<div class="introduction">
+	          		<h3 class="intro_title">中国生物志库</h3>
+	          		<div class="intro_content">
+	          			
+	          			<p style="text-indent:2em;">"神奇生物数据库是我国广西安全工程职业技术学院软件五班宝可三人组制作发布生物信息数据库，收录了中国近1百种现生生物物种，如部分动物类群（鸟、鱼、两爬动物、哺乳动物、海洋动物等），本库提供了生物物种的权威名称、分类地位、形态特征、分布、功用、理论知识等生物学信息。大部分物种均配有彩色照片或者黑白线描图。库中每一条物种信息、每一张图片、每一个理论知识均经过学术专家的科研论证与权威鉴定，并已经在正式出版物中发布。绝无造假。</p><p style="text-indent:2em;"></p>
+	          			
+	          		</div>
+	          		<span class="intro_open">[展开]</span>
+	          		<ul class="intro_number clearfix">
+	            		<li>
+			              	<span class="intro_amount DirectoryCount">-</span>
+			              	<span class="intro_name">物种条目</span>
+	            		</li>
+			            <li>
+			                <span class="intro_amount PictureCount">-</span>
+			                <span class="intro_name">图片数量</span>
+			          	</li>
+                    
+	          		</ul>
+	        	</div>
+	      	</div>
+	    </div>
+	    <div class="hotnews_box" style="top: 80%;">
+	      	<div class="container">
+	        	<div class="hotnews"><span>&nbsp;</span>
+					<div class="news-slick">
+							
+							<a href="https://species.sciencereading.cn/c/2023-04-24/556582.shtml" target="_blank" style="height: 46px;">
+								<span class="news_title" title="用户体验反馈问卷">用户体验反馈问卷</span>
+								<span class="news_date">2023-04-24</span>
+							</a>
+					</div>
+	        	</div>
+	      	</div>
+	 	</div>
+  	</div>
+	        </div>
+               <!-- 公共底部 -->
+	<footer class="footer">
+    	<div class="container" style="display: flex;align-items: center;flex-wrap: wrap;">
+	    	<div style="min-width: 300px; width:60%;display:inline-block;">
+	    	    <p>© 广西安全工程职业技术学院 <a href="https://beian.miit.gov.cn/" target="_blank">---</a> <a href="http://www.beian.gov.cn/portal/registerSystemInfo?recordcode=11010102004272" target="_blank"><img src="https://species.sciencereading.cn/images/gongan.png">软件五班</a></br> 
+	      		<a target="_blank" href="https://species.sciencereading.cn/images/20211231.jpg">联系方式 邮箱：1764567743@qq.com</a>  <a target="_blank" href="https://species.sciencereading.cn/images/20220430.jpg">---或扫码：</a></p>
+	    	</div>
+	   
+    	</div>
+  	</footer>    
+</div>
+  <script>
+  	$(function(){
+  		$('#nav2>a').addClass('active');
+  		var indexNumber = {DirectoryCount:336378,PictureCount:187863,WordNumber:111992062}
+	   	for(key in indexNumber) {
+	     	$('.' + key).html((indexNumber[key]).toLocaleString())
+		}
+  		
+  		$('.slick-nav').slick({
+  			asNavFor: '.slick',
+  			slidesToShow: 5,
+  			arrows: false,
+		})
+  		$('.slick').slick({
+  			arrows: true,
+  			autoplay: true,
+	       	autoplaySpeed: 3000,
+  			asNavFor: '.slick-nav'
+  		});
+	   	$('.news-slick').slick({
+			vertical: true,
+			autoplay: true, 
+			arrows: false,
+			autoplaySpeed: 3000
+	   	})
+		$('.intro_open').click(function() {
+	      	$('.intro_content').toggleClass('open');
+	      	var briHtml = '[展开]';
+	      	
+	      	var curLang = $('.language .switch-ul .on').attr('lang');
+	     	if($(this).hasClass('open')) {
+	     		if(curLang=='en')
+	     			briHtml = '[open]';
+	     		$(this).removeClass('open').html(briHtml);
+	      	} else {
+	      		briHtml = '[收起]';
+	      		if(curLang=='en')
+	     			briHtml = '[close]';
+	       		$(this).addClass('open').html(briHtml);
+	      	}
+		})
+
+		// 全屏滚动
+        $('#fullpage').fullpage({
+            // anchors: ['p1','p2', 'p3', 'p4'], //锚点
+            navigation: false, //导航
+            navigationPosition: 'right', //导航位置
+            // fixedElements: '.header' //固定元素
+        });
+	   	
+	 // 左右布局
+        function secBefRight(){
+            var w = $('.container').width();
+            var right = $(window).width() - w;
+            var height = $('.section').height();
+            if ($(window).width() >= 768 && $('.section').find('.contTxt').length) {
+                $('.section:odd .bg').css({
+                    'height': height,
+                    'right': right/2
+                });
+                 $('.section:odd').addClass('secRight');
+            } else if($(window).width() < 768 && $('.section').find('.contTxt').length){
+                $('.section:odd .bg').css({
+                    'height': height,
+                    'right': 0
+                });
+            };
+        }
+        function secBefLeft(){
+            var w = $('.container').width();
+            var left = $(window).width() - w;
+            var height = $('.section').height();
+            if ($(window).width() >= 768 && $('.section').find('.contTxt').length) {
+                $('.section:even .bg').css({
+                    'height': height,
+                    'left': left/2
+                });
+            } else if($(window).width() < 768 && $('.section').find('.contTxt').length){
+                $('.section:even .bg').css({
+                    'height': height,
+                    'left': 0
+                });
+            };
+        }
+        $(window).load(function(event) {
+            secBefRight();
+            secBefLeft();
+        });
+        $(window).resize(function(event) {
+            secBefRight();
+            secBefLeft();
+        });
+		
+		//浏览记录
+		addHistory();
+	})
+</script>
+<script src="https://species.sciencereading.cn/biology/stat/front/stat.js" type="text/javascript"></script>
+<script>
+if(window._zcms_stat)_zcms_stat("SiteID=122&Dest=https://species.sciencereading.cn/biology/stat/dealer");
+</script>
+</body>
+</html>
